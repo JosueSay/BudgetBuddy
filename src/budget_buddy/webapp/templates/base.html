@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BudgetBuddy - Categorizador de PDFs</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>BudgetBuddy · Categorizador de PDFs</h1>
+      <nav>
+        <a href="/">Inicio</a>
+        <a href="/?only=unclassified">Sin categoría</a>
+        <a href="/?only=classified">Clasificados</a>
+      </nav>
+    </header>
+
+    <main>{% block content %}{% endblock %}</main>
+
+    <footer>
+      <p>
+        BudgetBuddy © 2025 — Herramienta local de clasificación de facturas PDF
+      </p>
+    </footer>
+  </body>
+</html>

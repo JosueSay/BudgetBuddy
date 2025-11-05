@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- gestión de categorías (arriba) -->
+<section class="panel">
+  <h3>gestión de categorías</h3>
+  <div class="panel-grid">
+    <form method="post" action="/category/create">
+      <label>nueva categoría</label>
+      <input type="text" name="name" placeholder="ej. restaurante">
+      <button type="submit">crear</button>
+    </form>
+
+    <form method="post" action="/category/rename">
+      <label>renombrar</label>
+      <select name="old">
+        {% for c in categories %}
+          <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="new" placeholder="nuevo nombre">
+      <button type="submit">renombrar</button>
+    </form>
+
+    <form method="post" action="/category/delete">
+      <label>eliminar</label>
+      <select name="name">
+        {% for c in categories %}
+          <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="danger">eliminar</button>
+      <div class="hint tiny">al eliminar, las asignaciones quedan sin categoría</div>
+    </form>
+  </div>
+</section>
+
+<!-- filtros -->
+<section class="toolbar">
+  <form class="inline" method="get" action="/">
+    <input type="text" name="q" placeholder="buscar por nombre…" value="{{ q }}">
+    <select name="only">
+      <option value="" {{ '' == only and 'selected' or '' }}>todos</option>
+      <option value="unclassified" {{ 'unclassified' == only and 'selected' or '' }}>sin categoría</option>
+      <option value="classified" {{ 'classified' == only and 'selected' or '' }}>clasificados</option>
+    </select>
+    <button type="submit">filtrar</button>
+    {% if q or only %}
+      <a class="link-reset" href="/">limpiar filtros</a>
+    {% endif %}
+  </form>
+</section>
+
+<!-- estadísticas -->
+<section class="stats">
+  {% set total = rows|length %}
+  {% set clas = (rows | selectattr('classified') | list) | length %}
+  {% set sin = total - clas %}
+  <span>total: {{ total }}</span>
+  <span>clasificados: {{ clas }}</span>
+  <span>sin categoría: {{ sin }}</span>
+</section>
+
+<!-- lista + visor -->
+<section class="grid">
+  <div class="col list">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>archivo</th>
+          <th>origen</th>
+          <th>estado</th>
+          <th>categoría</th>
+          <th>acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="{{ r.classified and 'row-ok' or 'row-pending' }}">
+          <td class="mono">{{ r.pdf_filename }}</td>
+          <td>
+            <div>zip: {{ r.zip_root }}</div>
+            <div>año/bloque: {{ r.year }}/{{ r.block }}</div>
+            <div class="tiny mono path">{{ r.pdf_path }}</div>
+          </td>
+          <td>
+            {% if r.missing == 1 %}
+              <span class="badge warn">no disponible</span>
+            {% elif r.classified %}
+              <span class="badge ok">clasificado</span>
+            {% else %}
+              <span class="badge pending">sin categoría</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/assign" class="inline">
+              <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
+              <select name="category">
+                <option value="" {{ (not r.category) and 'selected' or '' }}>— seleccionar —</option>
+                {% for c in categories %}
+                  <option value="{{ c }}" {{ r.category == c and 'selected' or '' }}>{{ c }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit">guardar</button>
+            </form>
+            {% if r.category %}
+              <form method="post" action="/unassign" class="inline">
+                <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
+                <button type="submit" class="ghost">quitar</button>
+              </form>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.missing == 0 %}
+              <button class="ghost" data-open-pdf data-path="{{ r.pdf_path }}">ver</button>
+              <a class="ghost" href="/pdf?path={{ r.pdf_path | urlencode }}" target="_blank" rel="noopener">abrir en pestaña</a>
+            {% else %}
+              <button class="ghost" disabled>ver</button>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col viewer">
+    <div class="viewer-header">
+      <span>previsualización</span>
+      <span id="viewer-filename" class="mono tiny"></span>
+    </div>
+    <iframe id="pdf-viewer" title="pdf viewer" src="" frameborder="0"></iframe>
+  </div>
+</section>
+
+<script>
+  // abre el pdf en el visor derecho (inline)
+  const viewer = document.getElementById('pdf-viewer');
+  const viewerName = document.getElementById('viewer-filename');
+  document.querySelectorAll('[data-open-pdf]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = btn.getAttribute('data-path');
+      viewer.src = '/pdf?path=' + encodeURIComponent(p);
+      viewerName.textContent = p.split('/').pop();
+    });
+  });
+</script>
+
+{% endblock %}
