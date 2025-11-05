@@ -12,3 +12,7 @@ resolve-apply:
 undo:
 	 @echo "uso: make undo RUN=run_YYYYmmdd_HHMMSS"
 	 PYTHONPATH=. python scripts/python/resolve_duplicates.py --undo "data/interim/.trash/$(RUN)"
+
+.PHONY: web
+web:
+	 PYTHONPATH=. uvicorn src.budget_buddy.webapp.main:app --host 0.0.0.0 --port 8000 --reload
