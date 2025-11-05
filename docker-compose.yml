@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  budgetbuddy:
+    container_name: budgetbuddy
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+    command: bash

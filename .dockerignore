@@ -1,0 +1,24 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# notebooks
+.ipynb_checkpoints/
+
+# git
+.git/
+.gitignore
+
+# os
+.DS_Store
+
+# outputs
+outputs/
+
+# entornos virtuales locales
+.venv/
+venv/
+env/

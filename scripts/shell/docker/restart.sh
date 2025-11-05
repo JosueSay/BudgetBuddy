@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# reinicia el contenedor docker del proyecto
+
+set -euo pipefail
+dos2unix "$0" >/dev/null 2>&1 || true
+
+# colores
+BLUE="\e[34m"
+GREEN="\e[32m"
+BOLD="\e[1m"
+RESET="\e[0m"
+
+echo -e "\n${BOLD}${BLUE}[docker] 🔁 Reiniciando contenedor del proyecto...${RESET}\n"
+docker compose down
+docker compose up -d
+echo -e "\n${GREEN}✔️ [docker] Contenedor reiniciado correctamente.${RESET}\n"
+
+docker compose ps
+echo -e "\n${BOLD}${BLUE}✅ Listo.${RESET}\n"
