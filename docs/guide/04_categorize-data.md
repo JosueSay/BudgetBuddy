@@ -1,6 +1,6 @@
 # Categorización de datos
 
-- **Pipeline anterior:** [03_handle-duplicates.md](03_handle-duplicates.md)
+- **Pipeline anterior:** [03_handle-duplicates.md](https://github.com/JosueSay/BudgetBuddy/blob/main/docs/guide/03_handle-duplicates.md)
 
 ## Objetivo
 
