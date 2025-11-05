@@ -48,12 +48,12 @@ Ejecuta el script de inicialización para crear la estructura base de datos:
 Scripts principales para gestionar el entorno:
 
 ```bash
-./scripts/devops/docker/build.sh     # Construir la imagen
-./scripts/devops/docker/start.sh     # Iniciar el contenedor
-./scripts/devops/docker/stop.sh      # Detener el contenedor
-./scripts/devops/docker/restart.sh   # Reiniciar el contenedor
-./scripts/devops/docker/rebuild.sh   # Reconstruir imagen y reiniciar
-./scripts/devops/docker/clean.sh     # Eliminar solo este contenedor
+./scripts/shell/docker/build.sh     # Construir la imagen
+./scripts/shell/docker/start.sh     # Iniciar el contenedor
+./scripts/shell/docker/stop.sh      # Detener el contenedor
+./scripts/shell/docker/restart.sh   # Reiniciar el contenedor
+./scripts/shell/docker/rebuild.sh   # Reconstruir imagen y reiniciar
+./scripts/shell/docker/clean.sh     # Eliminar solo este contenedor
 ```
 
 > 🚧 **Nota:** El proyecto se encuentra en fase inicial de desarrollo.

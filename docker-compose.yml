@@ -1,6 +1,8 @@
 version: "3.9"
 services:
   budgetbuddy:
+    ports:
+      - "8000:8000"
     container_name: budgetbuddy
     build:
       context: .
