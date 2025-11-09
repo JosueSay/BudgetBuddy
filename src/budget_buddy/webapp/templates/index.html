@@ -61,7 +61,9 @@
   <span>sin categoría: {{ sin }}</span>
 </section>
 
-{% set first = rows[0] if rows and rows|length > 0 else None %}
+{# primer PDF disponible (missing == 0); si no hay, queda None #}
+{% set avail = rows | selectattr('missing','equalto',0) | list %}
+{% set first = avail and avail[0] or None %}
 
 <!-- lista + visor -->
 <section class="grid">
@@ -78,7 +80,13 @@
       </thead>
       <tbody>
       {% for r in rows %}
-      <tr class="{{ r.classified and 'row-ok' or 'row-pending' }}">
+      {% set fid = 'fcat-' ~ loop.index0 %}
+      <tr class="{{ r.classified and 'row-ok' or 'row-pending' }}"
+          {% if r.missing == 0 %}
+            data-open-row
+            data-path="{{ r.pdf_path }}"
+            data-filename="{{ r.pdf_filename }}"
+          {% endif %}>
         <td class="mono">{{ r.pdf_filename }}</td>
         <td>
           <div>zip: {{ r.zip_root }}</div>
@@ -86,16 +94,15 @@
           <div class="tiny mono path">{{ r.pdf_path }}</div>
         </td>
         <td>
-          {% if r.missing == 1 %}
-            <span class="badge warn">no disponible</span>
-          {% elif r.classified %}
-            <span class="badge ok">clasificado</span>
-          {% else %}
-            <span class="badge pending">sin categoría</span>
+          {% if r.missing == 1 %}<span class="badge warn">no disponible</span>
+          {% elif r.classified %}<span class="badge ok">clasificado</span>
+          {% else %}<span class="badge pending">sin categoría</span>
           {% endif %}
         </td>
+
+        <!-- select + form real -->
         <td>
-          <form method="post" action="/assign">
+          <form id="{{ fid }}" method="post" action="/assign">
             <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
             <select name="category">
               <option value="" {{ (not r.category) and 'selected' or '' }}>— seleccionar —</option>
@@ -105,29 +112,26 @@
             </select>
           </form>
         </td>
+
+        <!-- acciones -->
         <td class="actions">
-          <form method="post" action="/assign" class="inline">
-            <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
-            <input type="hidden" name="category" value="{{ r.category }}">
-            <button type="submit">Guardar cambios</button>
-          </form>
+          <button type="submit" form="{{ fid }}">guardar</button>
 
           {% if r.category %}
             <form method="post" action="/unassign" class="inline">
               <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
-              <button type="submit" class="ghost">Quitar categoría</button>
+              <button type="submit" class="ghost">quitar</button>
             </form>
           {% endif %}
 
           {% if r.missing == 0 %}
-            <a class="ghost" href="/pdf?path={{ r.pdf_path | urlencode }}" target="_blank" rel="noopener">Abrir en pestaña</a>
+            <a class="ghost open-tab" href="/pdf?path={{ r.pdf_path | urlencode }}" target="_blank" rel="noopener">abrir en pestaña</a>
           {% else %}
             <button class="ghost" disabled>no disponible</button>
           {% endif %}
         </td>
       </tr>
       {% endfor %}
-
       </tbody>
     </table>
   </div>
@@ -144,5 +148,36 @@
             frameborder="0"></iframe>
   </div>
 </section>
+
+<script>
+  // visor
+  const viewer = document.getElementById('pdf-viewer');
+  const viewerName = document.getElementById('viewer-filename');
+
+  function openPath(p, name){
+    if (!p) return;
+    viewer.src = '/pdf?path=' + encodeURIComponent(p);
+    viewerName.textContent = name || (p.split('/').pop());
+  }
+
+  // 1) Inicializar con el primer disponible si existe en el HTML (server-side)
+  (function initFirst(){
+    const first = document.querySelector('[data-open-row]');
+    if (first) openPath(first.getAttribute('data-path'), first.getAttribute('data-filename'));
+  })();
+
+  // 2) Delegación de eventos:
+  document.addEventListener('click', (e) => {
+    // ignorar si el clic fue en UI interactiva
+    if (e.target.closest('td.actions, select, button, a, input, label')) return;
+
+    const row = e.target.closest('[data-open-row]');
+    if (!row) return;
+
+    const p = row.getAttribute('data-path');
+    const name = row.getAttribute('data-filename');
+    openPath(p, name);
+  });
+</script>
 
 {% endblock %}

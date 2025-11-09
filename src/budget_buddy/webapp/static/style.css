@@ -93,3 +93,6 @@ a.ghost.open-tab:hover{background:var(--mediator);color:#fff}
 
 .link-reset{color:var(--danger);text-decoration:none}
 .link-reset:hover{text-decoration:underline}
+
+[data-open-row] { cursor: default; }
+[data-open-row] td:not(.actions) { cursor: pointer; }
