@@ -61,6 +61,8 @@
   <span>sin categoría: {{ sin }}</span>
 </section>
 
+{% set first = rows[0] if rows and rows|length > 0 else None %}
+
 <!-- lista + visor -->
 <section class="grid">
   <div class="col list">
@@ -76,50 +78,56 @@
       </thead>
       <tbody>
       {% for r in rows %}
-        <tr class="{{ r.classified and 'row-ok' or 'row-pending' }}">
-          <td class="mono">{{ r.pdf_filename }}</td>
-          <td>
-            <div>zip: {{ r.zip_root }}</div>
-            <div>año/bloque: {{ r.year }}/{{ r.block }}</div>
-            <div class="tiny mono path">{{ r.pdf_path }}</div>
-          </td>
-          <td>
-            {% if r.missing == 1 %}
-              <span class="badge warn">no disponible</span>
-            {% elif r.classified %}
-              <span class="badge ok">clasificado</span>
-            {% else %}
-              <span class="badge pending">sin categoría</span>
-            {% endif %}
-          </td>
-          <td>
-            <form method="post" action="/assign" class="inline">
+      <tr class="{{ r.classified and 'row-ok' or 'row-pending' }}">
+        <td class="mono">{{ r.pdf_filename }}</td>
+        <td>
+          <div>zip: {{ r.zip_root }}</div>
+          <div>año/bloque: {{ r.year }}/{{ r.block }}</div>
+          <div class="tiny mono path">{{ r.pdf_path }}</div>
+        </td>
+        <td>
+          {% if r.missing == 1 %}
+            <span class="badge warn">no disponible</span>
+          {% elif r.classified %}
+            <span class="badge ok">clasificado</span>
+          {% else %}
+            <span class="badge pending">sin categoría</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/assign">
+            <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
+            <select name="category">
+              <option value="" {{ (not r.category) and 'selected' or '' }}>— seleccionar —</option>
+              {% for c in categories %}
+                <option value="{{ c }}" {{ r.category == c and 'selected' or '' }}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td class="actions">
+          <form method="post" action="/assign" class="inline">
+            <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
+            <input type="hidden" name="category" value="{{ r.category }}">
+            <button type="submit">Guardar cambios</button>
+          </form>
+
+          {% if r.category %}
+            <form method="post" action="/unassign" class="inline">
               <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
-              <select name="category">
-                <option value="" {{ (not r.category) and 'selected' or '' }}>— seleccionar —</option>
-                {% for c in categories %}
-                  <option value="{{ c }}" {{ r.category == c and 'selected' or '' }}>{{ c }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit">guardar</button>
+              <button type="submit" class="ghost">Quitar categoría</button>
             </form>
-            {% if r.category %}
-              <form method="post" action="/unassign" class="inline">
-                <input type="hidden" name="pdf_path" value="{{ r.pdf_path }}">
-                <button type="submit" class="ghost">quitar</button>
-              </form>
-            {% endif %}
-          </td>
-          <td>
-            {% if r.missing == 0 %}
-              <button class="ghost" data-open-pdf data-path="{{ r.pdf_path }}">ver</button>
-              <a class="ghost" href="/pdf?path={{ r.pdf_path | urlencode }}" target="_blank" rel="noopener">abrir en pestaña</a>
-            {% else %}
-              <button class="ghost" disabled>ver</button>
-            {% endif %}
-          </td>
-        </tr>
+          {% endif %}
+
+          {% if r.missing == 0 %}
+            <a class="ghost" href="/pdf?path={{ r.pdf_path | urlencode }}" target="_blank" rel="noopener">Abrir en pestaña</a>
+          {% else %}
+            <button class="ghost" disabled>no disponible</button>
+          {% endif %}
+        </td>
+      </tr>
       {% endfor %}
+
       </tbody>
     </table>
   </div>
@@ -127,23 +135,14 @@
   <div class="col viewer">
     <div class="viewer-header">
       <span>previsualización</span>
-      <span id="viewer-filename" class="mono tiny"></span>
+      <span id="viewer-filename" class="mono tiny">
+        {{ first and first.pdf_filename or '' }}
+      </span>
     </div>
-    <iframe id="pdf-viewer" title="pdf viewer" src="" frameborder="0"></iframe>
+    <iframe id="pdf-viewer" title="pdf viewer"
+            src="{{ first and ('/pdf?path=' ~ first.pdf_path|urlencode) or '' }}"
+            frameborder="0"></iframe>
   </div>
 </section>
-
-<script>
-  // abre el pdf en el visor derecho (inline)
-  const viewer = document.getElementById('pdf-viewer');
-  const viewerName = document.getElementById('viewer-filename');
-  document.querySelectorAll('[data-open-pdf]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const p = btn.getAttribute('data-path');
-      viewer.src = '/pdf?path=' + encodeURIComponent(p);
-      viewerName.textContent = p.split('/').pop();
-    });
-  });
-</script>
 
 {% endblock %}
