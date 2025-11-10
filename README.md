@@ -31,8 +31,8 @@ sudo apt-get update && sudo apt-get install -y dos2unix
 Convierte los scripts de Docker a formato Unix y hazlos ejecutables:
 
 ```bash
-dos2unix scripts/devops/docker/*.sh
-chmod +x scripts/devops/docker/*.sh
+dos2unix scripts/shell/docker/*.sh
+chmod +x scripts/shell/docker/*.sh
 ```
 
 ## 🗂️ Configuración inicial de directorios de datos
