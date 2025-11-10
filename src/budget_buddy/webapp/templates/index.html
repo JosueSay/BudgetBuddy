@@ -39,13 +39,21 @@
 <section class="toolbar">
   <form class="inline" method="get" action="/">
     <input type="text" name="q" placeholder="buscar por nombre…" value="{{ q }}">
+
+    <select name="cat">
+      <option value="" {{ '' == cat and 'selected' or '' }}>todas las categorías</option>
+      {% for c in categories %}
+        <option value="{{ c }}" {{ c == cat and 'selected' or '' }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+
     <select name="only">
       <option value="" {{ '' == only and 'selected' or '' }}>todos</option>
       <option value="unclassified" {{ 'unclassified' == only and 'selected' or '' }}>sin categoría</option>
       <option value="classified" {{ 'classified' == only and 'selected' or '' }}>clasificados</option>
     </select>
     <button type="submit">filtrar</button>
-    {% if q or only %}
+    {% if q or only or cat %}
       <a class="link-reset" href="/">limpiar filtros</a>
     {% endif %}
   </form>

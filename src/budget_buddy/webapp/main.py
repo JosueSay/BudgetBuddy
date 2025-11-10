@@ -70,13 +70,14 @@ def fileExists(rel_path: str) -> bool:
 
 # vistas
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, only: str | None = None, q: str | None = None):
+def index(request: Request, only: str | None = None, q: str | None = None, cat: str | None = None):
     m = readManifest()
     c = readCats()
 
     merged = m.merge(c[["pdf_path","category","missing"]], on="pdf_path", how="left")
     merged["classified"] = merged["category"].notna()
     merged["missing"] = merged["missing"].fillna(0).astype(int)
+
     if q:
         ql = q.lower()
         merged = merged[merged["pdf_filename"].str.lower().str.contains(ql, na=False)]
@@ -84,18 +85,23 @@ def index(request: Request, only: str | None = None, q: str | None = None):
         merged = merged[~merged["classified"]]
     elif only == "classified":
         merged = merged[merged["classified"]]
+    if cat:  # <-- NUEVO: filtrar por categoría exacta
+        merged = merged[merged["category"] == cat]
 
-    # orden simple: no clasificados primero
     merged = merged.sort_values(["classified","pdf_filename"]).reset_index(drop=True)
 
     cats_meta = readCatsMeta()
+    categories = sorted(cats_meta.get("categories", []), key=str.lower)
+
     tpl = env.get_template("index.html")
     return tpl.render(
         rows=merged.to_dict(orient="records"),
-        categories=cats_meta.get("categories", []),
+        categories=categories,
         q=q or "",
-        only=only or ""
+        only=only or "",
+        cat=cat or ""
     )
+
 
 @app.get("/pdf")
 def serve_pdf(path: str):
