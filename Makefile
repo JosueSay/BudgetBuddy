@@ -24,3 +24,17 @@ build-train:
 build-train-undo:
 	 @echo "uso: make build-train-undo RUN=run_YYYYmmdd_HHMMSS"
 	 PYTHONPATH=. python scripts/python/build_train_split.py --undo "data/splits/.trash/$(RUN)"
+
+# device: cuda, cpu, auto
+
+.PHONY: ocr
+ocr:
+	 PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda
+
+.PHONY: ocr-fast
+ocr-fast:
+	 PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --max-per-category 3 --device cuda
+
+.PHONY: check-gpu
+check-gpu:
+	 PYTHONPATH=. python -c "import torch; print('cuda:', torch.cuda.is_available(), '->', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
