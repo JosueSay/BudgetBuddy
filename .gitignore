@@ -210,3 +210,7 @@ __marimo__/
 # Documentacion extra y data
 others/
 data/
+
+# dependencias
+venv_common/
+venv_models/
