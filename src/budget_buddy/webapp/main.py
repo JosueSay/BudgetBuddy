@@ -7,12 +7,16 @@ from datetime import datetime
 import pandas as pd
 import json
 import urllib.parse
+from fastapi import FastAPI, Request, HTTPException, Form
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 # rutas base
 ROOT = Path("/app")
 DATA = ROOT / "data"
 PROCESSED = DATA / "processed"
-INTERIM_UNZIPPED = DATA / "interim" / "unzipped"
+INTERIM_UNZIPPED = DATA / "interim" / "unzipped_pdfs"
 MANIFEST = PROCESSED / "manifest_pdfs.csv"
 CATS = PROCESSED / "categories.csv"
 CATS_META = PROCESSED / "categories_meta.json"
@@ -85,7 +89,7 @@ def index(request: Request, only: str | None = None, q: str | None = None, cat: 
         merged = merged[~merged["classified"]]
     elif only == "classified":
         merged = merged[merged["classified"]]
-    if cat:  # <-- NUEVO: filtrar por categoría exacta
+    if cat:
         merged = merged[merged["category"] == cat]
 
     merged = merged.sort_values(["classified","pdf_filename"]).reset_index(drop=True)

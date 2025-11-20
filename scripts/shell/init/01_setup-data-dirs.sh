@@ -30,7 +30,8 @@ if [ -d "./data" ]; then
 fi
 
 # intenta crear la estructura
-if mkdir -p ./data/{raw,interim,processed,external,splits/{train,test}} 2>/dev/null; then
+# ahora separamos raw/pdf y raw/xml
+if mkdir -p ./data/{raw/{pdf,xml},interim,processed,external,splits/{train,test}} 2>/dev/null; then
     echo -e "${GREEN}✔️ Estructura creada con éxito.${RESET}\n"
 else
     echo -e "${RED}❌ Error al crear las carpetas.${RESET}\n"

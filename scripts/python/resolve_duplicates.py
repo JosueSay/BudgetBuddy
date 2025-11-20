@@ -1,17 +1,19 @@
-import argparse, re, shutil, sys
 from pathlib import Path
-import pandas as pd
+import argparse, re, shutil, sys
 from datetime import datetime
+import pandas as pd
+
 from src.budget_buddy.preprocessing.cleaning import scanPdfs, markDuplicatesByName, addHashes
 from src.budget_buddy.utils.io import toCsv
 
 # rutas base
 ROOT = Path(".")
-INTERIM_UNZIPPED = ROOT / "data" / "interim" / "unzipped"
+INTERIM_UNZIPPED = ROOT / "data" / "interim" / "unzipped_pdfs"
 PROC_DIR = ROOT / "data" / "processed"
 MANIFEST = PROC_DIR / "manifest_pdfs.csv"
 DUPS = PROC_DIR / "manifest_duplicates.csv"
 TRASH_ROOT = ROOT / "data" / "interim" / ".trash"
+
 
 def backupManifests(trash_run_dir: Path):
     # guarda copia de los manifests actuales en la carpeta de papelera antes de borrar

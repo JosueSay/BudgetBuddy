@@ -4,7 +4,6 @@ preprocess:
 	 PYTHONPATH=. python scripts/python/preprocess.py --hash --overwrite
 
 # Resolución de duplicados
-
 .PHONY: resolve resolve-apply duplicate-undo
 resolve:
 	 PYTHONPATH=. python scripts/python/resolve_duplicates.py --by name
