@@ -276,7 +276,7 @@ def main():
     parser.add_argument(
         "--dpi",
         type=int,
-        default=300,
+        default=450,
         help="dpi usados al generar las imágenes (cuando no hay cache)",
     )
     parser.add_argument(

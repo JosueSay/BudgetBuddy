@@ -14,7 +14,7 @@ def main():
     ap.add_argument(
         "--dpi",
         type=int,
-        default=300,
+        default=450,
         help="dpi para rasterizar los pdfs",
     )
     ap.add_argument(

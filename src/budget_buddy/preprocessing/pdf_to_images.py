@@ -14,11 +14,14 @@ INTERIM_ROOT = ROOT / "data" / "interim"
 IMAGES_ROOT = INTERIM_ROOT / "images"
 
 
-def pdfToImages(pdf_path: Path, dpi: int = 300) -> List[Image.Image]:
-    # convierte pdf a lista de imágenes PIL
-    images = convert_from_path(str(pdf_path), dpi=dpi)
+def pdfToImages(pdf_path: Path, dpi: int = 450) -> List[Image.Image]:
+    images = convert_from_path(
+        str(pdf_path),
+        dpi=dpi,
+        fmt="png",
+        grayscale=True,
+    )
     return images
-
 
 def getImagesDir(split: str, category: str) -> Path:
     # directorio donde se guardan las imágenes de un split y categoría
@@ -35,7 +38,7 @@ def savePdfPagesAsImages(
     split: str,
     category: str,
     pdf_path: Path,
-    dpi: int = 300,
+    dpi: int = 450,
     overwrite: bool = False,
 ) -> List[Path]:
     # rasteriza un pdf y guarda cada página como png
@@ -56,11 +59,11 @@ def savePdfPagesAsImages(
             saved_paths.append(out_path)
             continue
 
-        # garantiza modo rgb para evitar sorpresas
         if img.mode != "RGB":
+            # imagen viene en 'L' por grayscale=True; la pasamos a RGB para TrOCR
             img = img.convert("RGB")
 
-        img.save(out_path, format="PNG")
+        img.save(out_path, format="PNG", dpi=(dpi, dpi))
         saved_paths.append(out_path)
 
     return saved_paths
@@ -89,7 +92,7 @@ def loadCachedImages(
 
 def buildImagesForSplit(
     split: str = "train",
-    dpi: int = 300,
+    dpi: int = 450,
     max_per_category: int | None = None,
     overwrite: bool = False,
 ) -> None:

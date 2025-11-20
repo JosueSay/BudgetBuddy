@@ -36,11 +36,11 @@ build-train-undo:
 .PHONY: build-images
 build-images:
 	@echo "📄 Generando imágenes (cache activado). Para sobrescribir: make build-images OVERWRITE=1"
-	PYTHONPATH=. python scripts/python/build_ocr_images.py --split train $(if $(OVERWRITE),--overwrite,)
+	PYTHONPATH=. python scripts/python/build_ocr_images.py --split train --dpi 450 $(if $(OVERWRITE),--overwrite,)
 
 .PHONY: build-images-fast
 build-images-fast:
-	PYTHONPATH=. python scripts/python/build_ocr_images.py --split train --max-per-category 2 $(if $(OVERWRITE),--overwrite,)
+	PYTHONPATH=. python scripts/python/build_ocr_images.py --split train --dpi 450 --max-per-category 2 $(if $(OVERWRITE),--overwrite,)
 
 # OCR con plantilla sat
 .PHONY: ocr
