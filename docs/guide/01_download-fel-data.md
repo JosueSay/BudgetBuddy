@@ -1,4 +1,4 @@
-# Descarga de PDFs FEL (SAT) → `data/raw`
+# Descarga de PDFs FEL (SAT) → `data/raw/pdf`
 
 Esta guía explica cómo descargar en lote los PDFs de DTE (FEL) desde SAT y nombrar los ZIPs para el pipeline.
 
@@ -21,6 +21,8 @@ Esta guía explica cómo descargar en lote los PDFs de DTE (FEL) desde SAT y nom
 
    ![Pasos descargar data](../../images/descargar_data.png)
 
+> Nota: aprovechando descargar pdfs, se debe de descargar su versión equivalente a xml para meterlos en data/raw/xml
+
 ## Estándar de bloques y nombres
 
 Usar **MM/DD/YYYY** y nombrar ZIPs como `<year>_bX.zip`.
@@ -38,4 +40,4 @@ Usar **MM/DD/YYYY** y nombrar ZIPs como `<year>_bX.zip`.
 
 ## Ubicación de entrega
 
-- Coloca los ZIPs en: `data/raw/`
+- Coloca los ZIPs en: `data/raw/pdf`

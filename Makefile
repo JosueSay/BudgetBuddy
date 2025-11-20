@@ -16,13 +16,11 @@ duplicate-undo:
 	 PYTHONPATH=. python scripts/python/resolve_duplicates.py --undo "data/interim/.trash/$(RUN)"
 
 # Web para categorizar facturas
-
 .PHONY: web
 web:
 	 PYTHONPATH=. uvicorn src.budget_buddy.webapp.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Separación de categorias
-
 .PHONY: build-train build-train-undo
 build-train:
 	 PYTHONPATH=. python scripts/python/build_train_split.py

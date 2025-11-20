@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.budget_buddy.utils.io import ensureDirs, toCsv
+from src.budget_buddy.preprocessing.cleaning import unzipAll
 
 
 ROOT = Path(".")
@@ -14,6 +15,9 @@ PROC_DIR = ROOT / "data" / "processed"
 SPLITS_DIR = ROOT / "data" / "splits"
 TRAIN_ROOT = SPLITS_DIR / "train"
 TRAIN_TRASH_ROOT = SPLITS_DIR / ".trash"
+
+XML_RAW_DIR = ROOT / "data" / "raw" / "xml"
+XML_UNZIPPED_DIR = ROOT / "data" / "interim" / "unzipped_xml"
 
 CATEGORIES_META_PATH = PROC_DIR / "categories_meta.json"
 CATEGORIES_CSV_PATH = PROC_DIR / "categories.csv"
@@ -101,6 +105,23 @@ def restoreTrainArtifactsFromBackup(run_dir: Path):
         shutil.copy2(bak_skipped, TRAIN_SKIPPED_PATH)
 
 
+def buildXmlIndex():
+    """
+    Indexa los XML en data/interim/unzipped_xml por nombre base (stem).
+    Ej.: ABC123.pdf ↔ ABC123.xml
+    """
+    index = {}
+    if not XML_UNZIPPED_DIR.exists():
+        return index
+
+    for xml_path in XML_UNZIPPED_DIR.rglob("*.xml"):
+        stem = xml_path.stem
+        # si hay duplicados, nos quedamos con el primero (se puede refinar luego)
+        if stem not in index:
+            index[stem] = xml_path
+    return index
+
+
 def buildTrainSplit():
     categories = loadCategoriesMeta()
     df = loadCategoriesAssignments()
@@ -114,8 +135,17 @@ def buildTrainSplit():
     manifest_rows = []
     skipped_rows = []
 
+    # 1) filtrar PDFs que sí existen según categories.csv (missing == 0)
     df_filtered = df.copy()
     df_filtered = df_filtered[df_filtered["missing"] == 0]
+
+    # 2) preparar XML: unzip y build index
+    if XML_RAW_DIR.exists():
+        ensureDirs([XML_UNZIPPED_DIR])
+        # descomprime todos los zips de xml a /data/interim/unzipped_xml
+        unzipAll(XML_RAW_DIR, XML_UNZIPPED_DIR)
+
+    xml_index = buildXmlIndex()
 
     for _, row in df_filtered.iterrows():
         pdf_path_str = row["pdf_path"]
@@ -143,22 +173,55 @@ def buildTrainSplit():
             )
             continue
 
+        # base pdf: solo pasa a train si existe XML con el mismo stem
+        stem = src_path.stem
+        xml_path = xml_index.get(stem)
+
+        if xml_path is None:
+            skipped_rows.append(
+                {
+                    "reason": "xml_no_encontrado",
+                    "pdf_path": pdf_path_str,
+                    "category": category,
+                }
+            )
+            continue
+
         dst_dir = category_dirs[category]
-        dst_path = moveFile(src_path, dst_dir)
+
+        # mover PDF
+        dst_pdf_path = moveFile(src_path, dst_dir)
+
+        # mover XML asociado
+        if not xml_path.exists():
+            # por si el xml fue borrado entre el índice y ahora
+            skipped_rows.append(
+                {
+                    "reason": "xml_desaparecido",
+                    "pdf_path": pdf_path_str,
+                    "category": category,
+                    "xml_expected": str(xml_path),
+                }
+            )
+            continue
+
+        dst_xml_path = moveFile(xml_path, dst_dir)
 
         manifest_rows.append(
             {
                 "pdf_filename": row["pdf_filename"],
                 "original_pdf_path": pdf_path_str,
+                "original_xml_path": str(xml_path),
                 "category": category,
                 "split": "train",
-                "new_pdf_path": str(dst_path),
+                "new_pdf_path": str(dst_pdf_path),
+                "new_xml_path": str(dst_xml_path),
                 "updated_at": row.get("updated_at", ""),
             }
         )
 
     if not manifest_rows:
-        print("no se movió ningún archivo, revisa el csv y los filtros")
+        print("no se movió ningún archivo, revisa el csv, XML y los filtros")
         return
 
     manifest_df = pd.DataFrame(manifest_rows)
@@ -209,31 +272,51 @@ def undoRun(run_dir: Path):
         new_path_str = row.get("new_pdf_path", "")
         orig_path_str = row.get("original_pdf_path", "")
 
-        if not new_path_str or not orig_path_str:
-            skipped += 1
-            continue
+        # también caminos para xml (pueden no existir en corridas viejas)
+        new_xml_path_str = row.get("new_xml_path", "")
+        orig_xml_path_str = row.get("original_xml_path", "")
 
-        src = Path(new_path_str)
-        dst = Path(orig_path_str)
+        # restaurar PDF
+        if new_path_str and orig_path_str:
+            src = Path(new_path_str)
+            dst = Path(orig_path_str)
 
-        if not src.exists():
-            print(f"- no encontrado en split (saltando): {src}")
-            skipped += 1
-            continue
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                final_dst = dst
 
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        final_dst = dst
+                i = 1
+                while final_dst.exists():
+                    final_dst = dst.with_name(f"{dst.stem}__restored{i}{dst.suffix}")
+                    i += 1
 
-        i = 1
-        while final_dst.exists():
-            final_dst = dst.with_name(f"{dst.stem}__restored{i}{dst.suffix}")
-            i += 1
+                shutil.move(str(src), str(final_dst))
+                print(f"+ restaurado PDF: {final_dst}")
+                restored += 1
+            else:
+                print(f"- no encontrado en split (PDF, saltando): {src}")
+                skipped += 1
 
-        shutil.move(str(src), str(final_dst))
-        print(f"+ restaurado: {final_dst}")
-        restored += 1
+        # restaurar XML (si hay info en el log)
+        if new_xml_path_str and orig_xml_path_str:
+            src_xml = Path(new_xml_path_str)
+            dst_xml = Path(orig_xml_path_str)
 
-    print(f"\nresumen undo → restaurados: {restored}, omitidos: {skipped}")
+            if src_xml.exists():
+                dst_xml.parent.mkdir(parents=True, exist_ok=True)
+                final_dst_xml = dst_xml
+
+                i = 1
+                while final_dst_xml.exists():
+                    final_dst_xml = dst_xml.with_name(f"{dst_xml.stem}__restored{i}{dst_xml.suffix}")
+                    i += 1
+
+                shutil.move(str(src_xml), str(final_dst_xml))
+                print(f"+ restaurado XML: {final_dst_xml}")
+            else:
+                print(f"- no encontrado en split (XML, saltando): {src_xml}")
+
+    print(f"\nresumen undo → restaurados (PDF): {restored}, omitidos: {skipped}")
 
     restoreTrainArtifactsFromBackup(run_dir)
     print(
