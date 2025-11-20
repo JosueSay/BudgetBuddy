@@ -78,13 +78,13 @@ Cada fila documenta qué archivo se mantuvo y cuáles se movieron a la papelera.
 ### 3. Revertir cambios (Ctrl + Z)
 
 ```bash
-make undo RUN=<run_name>
+make duplicate-undo RUN=<run_name>
 ```
 
 Ejemplo:
 
 ```bash
-make undo RUN=run_20251105_153012
+make duplicate-undo RUN=run_20251105_153012
 ```
 
 Restaura todos los archivos a su **ruta original exacta** usando el `deletion_log.csv` y **repone los manifests** desde las copias de respaldo.
