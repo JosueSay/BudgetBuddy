@@ -33,7 +33,7 @@ sympy==1.14.0
 tokenizers==0.22.1
 torch==2.10.0.dev20251118+cu128
 torchaudio==2.10.0.dev20251119+cu128
-torchvision==0.25.0.dev20251119+cu128
+# torchvision==0.25.0.dev20251119+cu128
 transformers==4.57.1
 typing_extensions==4.15.0
 
