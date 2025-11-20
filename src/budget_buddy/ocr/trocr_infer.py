@@ -6,10 +6,15 @@ import os
 os.environ["TRANSFORMERS_NO_TORCHVISION"] = "1"
 
 import torch
-from pdf2image import convert_from_path
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 from src.budget_buddy.utils.io import ensureDirs
+from src.budget_buddy.layout.sat_template import getSatRegionsBoxes
+from src.budget_buddy.preprocessing.pdf_loader import iterSplitPdfs
+from src.budget_buddy.preprocessing.pdf_to_images import (
+    savePdfPagesAsImages,
+    loadCachedImages,
+)
 
 
 ROOT = Path(".")
@@ -17,6 +22,9 @@ TRAIN_SPLIT_ROOT = ROOT / "data" / "splits" / "train"
 OCR_OUTPUT_ROOT = ROOT / "data" / "interim" / "ocr_train"
 
 TROCR_MODEL_NAME = "qantev/trocr-base-spanish"
+
+# por ahora asumimos que el split usado para las imágenes es "train"
+IMAGE_SPLIT = "train"
 
 
 def getDevice(device_preference: str):
@@ -29,7 +37,6 @@ def getDevice(device_preference: str):
             raise RuntimeError("se pidió cuda pero torch.cuda.is_available() es False")
         return torch.device("cuda")
 
-    # modo auto
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
@@ -45,30 +52,82 @@ def loadTrocrModel(model_name: str, device: torch.device):
     return processor, model
 
 
-def pdfToImages(pdf_path: Path, dpi: int = 300):
-    # convierte pdf a lista de imágenes PIL
-    # nota: requiere poppler instalado para pdf2image.convert_from_path
-    images = convert_from_path(str(pdf_path), dpi=dpi)
+def getImagesForPdf(
+    category: str,
+    pdf_path: Path,
+    dpi: int = 300,
+    use_cache: bool = True,
+):
+    # intenta cargar imágenes cacheadas; si no hay, las genera y vuelve a cargar
+    images = []
+
+    if use_cache:
+        images = loadCachedImages(IMAGE_SPLIT, category, pdf_path)
+
+    if images:
+        return images
+
+    # no hay cache → generamos pngs y luego las cargamos
+    print("  no hay imágenes cacheadas, generando pngs...")
+    savePdfPagesAsImages(
+        split=IMAGE_SPLIT,
+        category=category,
+        pdf_path=pdf_path,
+        dpi=dpi,
+        overwrite=False,
+    )
+    images = loadCachedImages(IMAGE_SPLIT, category, pdf_path)
+
     return images
 
 
-def ocrImages(processor, model, images, device: torch.device, max_new_tokens: int = 256):
-    # corre trocr sobre una lista de imágenes y devuelve lista de textos
+def ocrSingleImage(processor, model, img, device: torch.device, max_new_tokens: int = 256):
+    # corre trocr sobre una sola imagen
+    inputs = processor(images=img, return_tensors="pt").to(device)
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+        )
+    text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    return text.strip()
+
+
+def ocrImagesFullPage(processor, model, images, device: torch.device, max_new_tokens: int = 256):
+    # ocr estándar por página completa
     page_texts = []
 
     for idx, img in enumerate(images):
-        inputs = processor(images=img, return_tensors="pt").to(device)
-        with torch.no_grad():
-            generated_ids = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens
-            )
-        text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-        text = text.strip()
+        text = ocrSingleImage(processor, model, img, device, max_new_tokens=max_new_tokens)
         page_texts.append(text)
-        print(f"  página {idx + 1}: {len(text)} chars")
+        print(f"  página {idx + 1} (full) → {len(text)} chars")
 
     return page_texts
+
+
+def ocrImagesSatTemplate(processor, model, images, device: torch.device, max_new_tokens: int = 256):
+    # ocr por zonas usando plantilla sat, asumiendo 1 página por factura
+    if not images:
+        return {}, [], ""
+
+    img = images[0]
+    img_width, img_height = img.size
+    boxes = getSatRegionsBoxes(img_width, img_height)
+
+    region_texts = {}
+    ordered_texts = []
+
+    for region_name, box in boxes.items():
+        crop_img = img.crop(box)
+        text = ocrSingleImage(processor, model, crop_img, device, max_new_tokens=max_new_tokens)
+        region_texts[region_name] = text
+        ordered_texts.append((region_name, text))
+        print(f"  region {region_name} → {len(text)} chars")
+
+    parts = [txt for _, txt in ordered_texts if txt]
+    full_text = "\n\n".join(parts)
+
+    return region_texts, ordered_texts, full_text
 
 
 def buildOutputPath(pdf_path: Path, category: str):
@@ -80,28 +139,67 @@ def buildOutputPath(pdf_path: Path, category: str):
     return out_path
 
 
-def ocrPdf(processor, model, device: torch.device, pdf_path: Path, category: str):
-    # corre ocr sobre un pdf completo y guarda json con textos
-    print(f"\nprocesando pdf: {pdf_path}")
+def ocrPdf(
+    processor,
+    model,
+    device: torch.device,
+    pdf_path: Path,
+    category: str,
+    mode: str,
+    dpi: int,
+    use_cache: bool,
+    overwrite: bool,
+):
+    # corre ocr sobre un pdf y guarda json con textos
+    out_path = buildOutputPath(pdf_path, category)
 
-    images = pdfToImages(pdf_path)
+    if out_path.exists() and not overwrite:
+        print(f"\n[skip] ya existe: {out_path}")
+        return out_path
+
+    print(f"\nprocesando pdf: {pdf_path}  |  modo={mode}")
+
+    images = getImagesForPdf(
+        category=category,
+        pdf_path=pdf_path,
+        dpi=dpi,
+        use_cache=use_cache,
+    )
     if not images:
-        print("  no se pudieron generar imágenes, se omite")
+        print("  no se pudieron obtener imágenes (ni de cache ni nuevas), se omite")
         return None
 
-    page_texts = ocrImages(processor, model, images, device)
-    full_text = "\n\n".join(page_texts)
-
-    out_path = buildOutputPath(pdf_path, category)
+    if mode == "full":
+        page_texts = ocrImagesFullPage(processor, model, images, device)
+        full_text = "\n\n".join(page_texts)
+        region_texts = {}
+    else:
+        region_texts, ordered_texts, full_text = ocrImagesSatTemplate(
+            processor,
+            model,
+            images,
+            device,
+        )
+        page_texts = [full_text]
 
     payload = {
         "pdf_path": str(pdf_path),
         "category": category,
         "model_name": TROCR_MODEL_NAME,
-        "num_pages": len(page_texts),
+        "num_pages": len(images),
         "page_texts": page_texts,
         "full_text": full_text,
     }
+
+    if region_texts:
+        payload["regions"] = {
+            name: {
+                "text": txt,
+            }
+            for name, txt in region_texts.items()
+        }
+        payload["header_text"] = region_texts.get("header", "")
+        payload["items_text"] = region_texts.get("items_table", "")
 
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -111,27 +209,22 @@ def ocrPdf(processor, model, device: torch.device, pdf_path: Path, category: str
 
 
 def iterTrainPdfs(max_per_category: int | None = None):
-    # recorre data/splits/train/<categoria>/*.pdf
+    # compat: mantenemos esta función, pero ahora usamos iterSplitPdfs internamente
     if not TRAIN_SPLIT_ROOT.exists():
         raise FileNotFoundError(f"no existe {TRAIN_SPLIT_ROOT}, corre build-train primero")
 
-    for cat_dir in sorted(TRAIN_SPLIT_ROOT.iterdir()):
-        if not cat_dir.is_dir():
-            continue
-
-        category = cat_dir.name
-        pdf_paths = sorted(cat_dir.glob("*.pdf"))
-
-        if max_per_category is not None:
-            pdf_paths = pdf_paths[:max_per_category]
-
-        print(f"\ncategoria: {category} (n={len(pdf_paths)})")
-
-        for pdf_path in pdf_paths:
-            yield category, pdf_path
+    for category, pdf_path in iterSplitPdfs(split="train", max_per_category=max_per_category):
+        yield category, pdf_path
 
 
-def runOcr(max_per_category: int | None = None, device_preference: str = "auto"):
+def runOcr(
+    max_per_category: int | None = None,
+    device_preference: str = "auto",
+    mode: str = "sat-template",
+    dpi: int = 300,
+    use_cache: bool = True,
+    overwrite: bool = False,
+):
     ensureDirs([OCR_OUTPUT_ROOT])
 
     device = getDevice(device_preference)
@@ -143,7 +236,17 @@ def runOcr(max_per_category: int | None = None, device_preference: str = "auto")
 
     processed = 0
     for category, pdf_path in iterTrainPdfs(max_per_category=max_per_category):
-        out_path = ocrPdf(processor, model, device, pdf_path, category)
+        out_path = ocrPdf(
+            processor=processor,
+            model=model,
+            device=device,
+            pdf_path=pdf_path,
+            category=category,
+            mode=mode,
+            dpi=dpi,
+            use_cache=use_cache,
+            overwrite=overwrite,
+        )
         if out_path is not None:
             processed += 1
 
@@ -164,9 +267,38 @@ def main():
         default="auto",
         help="device a usar: auto, cpu o cuda",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["full", "sat-template"],
+        default="sat-template",
+        help="estrategia de ocr: página completa o zonas sat-template",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=300,
+        help="dpi usados al generar las imágenes (cuando no hay cache)",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="si se pasa, ignora cache de imágenes y las regenera",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="si se pasa, recalcula json aunque ya exista",
+    )
     args = parser.parse_args()
 
-    runOcr(max_per_category=args.max_per_category, device_preference=args.device)
+    runOcr(
+        max_per_category=args.max_per_category,
+        device_preference=args.device,
+        mode=args.mode,
+        dpi=args.dpi,
+        use_cache=not args.no_cache,
+        overwrite=args.overwrite,
+    )
 
 
 if __name__ == "__main__":

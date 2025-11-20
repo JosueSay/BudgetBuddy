@@ -1,0 +1,37 @@
+sat_template:
+  page_size:
+    width: 2550
+    height: 3300
+
+  regions:
+    # incluye razon social, nits, receptor, fechas, etc
+    header:
+      x0: 0.0592   # 151 / 2550
+      x1: 0.9424   # 2403 / 2550
+      y0: 0.1145   # 378 / 3300
+      y1: 0.2288   # 755 / 3300
+
+    # tabla de items + totales
+    items_table:
+      x0: 0.0592   # 151 / 2550
+      x1: 0.9424   # 2403 / 2550
+      y0: 0.2491   # 822 / 3300
+      y1: 0.3758   # 1240 / 3300
+
+    # por ahora no se usan, pero quedan listos
+    totals_hint:
+      x0: 0.60
+      x1: 0.97
+      y0: 0.36
+      y1: 0.46
+
+    footer_hint:
+      x0: 0.03
+      x1: 0.97
+      y0: 0.80
+      y1: 0.98
+
+  # regiones que realmente nos importan en v1
+  active_regions:
+    - header
+    - items_table
