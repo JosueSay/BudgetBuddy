@@ -6,7 +6,10 @@ import os
 os.environ["TRANSFORMERS_NO_TORCHVISION"] = "1"
 
 import torch
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from src.budget_buddy.utils.common_models import getDevice, loadTrocrModel
+
+from src.budget_buddy.utils.logging_config import quietHf
+quietHf()
 
 from src.budget_buddy.utils.io import ensureDirs
 from src.budget_buddy.layout.sat_template import getSatRegionsBoxes
@@ -20,36 +23,7 @@ from src.budget_buddy.preprocessing.pdf_to_images import (
 ROOT = Path(".")
 TRAIN_SPLIT_ROOT = ROOT / "data" / "splits" / "train"
 OCR_OUTPUT_ROOT = ROOT / "data" / "interim" / "ocr_train"
-
-TROCR_MODEL_NAME = "qantev/trocr-base-spanish"
-
-# por ahora asumimos que el split usado para las imágenes es "train"
 IMAGE_SPLIT = "train"
-
-
-def getDevice(device_preference: str):
-    # device_preference: "auto", "cpu", "cuda"
-    if device_preference == "cpu":
-        return torch.device("cpu")
-
-    if device_preference == "cuda":
-        if not torch.cuda.is_available():
-            raise RuntimeError("se pidió cuda pero torch.cuda.is_available() es False")
-        return torch.device("cuda")
-
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
-
-
-def loadTrocrModel(model_name: str, device: torch.device):
-    # carga modelo y processor de trocr
-    print(f"cargando modelo TrOCR: {model_name}")
-    processor = TrOCRProcessor.from_pretrained(model_name)
-    model = VisionEncoderDecoderModel.from_pretrained(model_name)
-    model.to(device)
-    model.eval()
-    return processor, model
 
 
 def getImagesForPdf(
@@ -81,7 +55,13 @@ def getImagesForPdf(
     return images
 
 
-def ocrSingleImage(processor, model, img, device: torch.device, max_new_tokens: int = 256):
+def ocrSingleImage(
+    processor,
+    model,
+    img,
+    device: torch.device,
+    max_new_tokens: int = 256,
+):
     # corre trocr sobre una sola imagen
     inputs = processor(images=img, return_tensors="pt").to(device)
     with torch.no_grad():
@@ -93,19 +73,37 @@ def ocrSingleImage(processor, model, img, device: torch.device, max_new_tokens: 
     return text.strip()
 
 
-def ocrImagesFullPage(processor, model, images, device: torch.device, max_new_tokens: int = 256):
+def ocrImagesFullPage(
+    processor,
+    model,
+    images,
+    device: torch.device,
+    max_new_tokens: int = 256,
+):
     # ocr estándar por página completa
     page_texts = []
 
     for idx, img in enumerate(images):
-        text = ocrSingleImage(processor, model, img, device, max_new_tokens=max_new_tokens)
+        text = ocrSingleImage(
+            processor,
+            model,
+            img,
+            device,
+            max_new_tokens=max_new_tokens,
+        )
         page_texts.append(text)
         print(f"  página {idx + 1} (full) → {len(text)} chars")
 
     return page_texts
 
 
-def ocrImagesSatTemplate(processor, model, images, device: torch.device, max_new_tokens: int = 256):
+def ocrImagesSatTemplate(
+    processor,
+    model,
+    images,
+    device: torch.device,
+    max_new_tokens: int = 256,
+):
     # ocr por zonas usando plantilla sat, asumiendo 1 página por factura
     if not images:
         return {}, [], ""
@@ -119,7 +117,13 @@ def ocrImagesSatTemplate(processor, model, images, device: torch.device, max_new
 
     for region_name, box in boxes.items():
         crop_img = img.crop(box)
-        text = ocrSingleImage(processor, model, crop_img, device, max_new_tokens=max_new_tokens)
+        text = ocrSingleImage(
+            processor,
+            model,
+            crop_img,
+            device,
+            max_new_tokens=max_new_tokens,
+        )
         region_texts[region_name] = text
         ordered_texts.append((region_name, text))
         print(f"  region {region_name} → {len(text)} chars")
@@ -149,6 +153,7 @@ def ocrPdf(
     dpi: int,
     use_cache: bool,
     overwrite: bool,
+    model_dir: str,
 ):
     # corre ocr sobre un pdf y guarda json con textos
     out_path = buildOutputPath(pdf_path, category)
@@ -185,7 +190,7 @@ def ocrPdf(
     payload = {
         "pdf_path": str(pdf_path),
         "category": category,
-        "model_name": TROCR_MODEL_NAME,
+        "model_name": model_dir,
         "num_pages": len(images),
         "page_texts": page_texts,
         "full_text": full_text,
@@ -211,9 +216,14 @@ def ocrPdf(
 def iterTrainPdfs(max_per_category: int | None = None):
     # compat: mantenemos esta función, pero ahora usamos iterSplitPdfs internamente
     if not TRAIN_SPLIT_ROOT.exists():
-        raise FileNotFoundError(f"no existe {TRAIN_SPLIT_ROOT}, corre build-train primero")
+        raise FileNotFoundError(
+            f"no existe {TRAIN_SPLIT_ROOT}, corre build-train primero"
+        )
 
-    for category, pdf_path in iterSplitPdfs(split="train", max_per_category=max_per_category):
+    for category, pdf_path in iterSplitPdfs(
+        split="train",
+        max_per_category=max_per_category,
+    ):
         yield category, pdf_path
 
 
@@ -224,6 +234,7 @@ def runOcr(
     dpi: int = 300,
     use_cache: bool = True,
     overwrite: bool = False,
+    model_dir: str = "qantev/trocr-base-spanish",
 ):
     ensureDirs([OCR_OUTPUT_ROOT])
 
@@ -232,7 +243,7 @@ def runOcr(
     if device.type == "cuda":
         print(f"cuda disponible, device name: {torch.cuda.get_device_name(0)}")
 
-    processor, model = loadTrocrModel(TROCR_MODEL_NAME, device)
+    processor, model = loadTrocrModel(model_dir, device)
 
     processed = 0
     for category, pdf_path in iterTrainPdfs(max_per_category=max_per_category):
@@ -246,6 +257,7 @@ def runOcr(
             dpi=dpi,
             use_cache=use_cache,
             overwrite=overwrite,
+            model_dir=model_dir,
         )
         if out_path is not None:
             processed += 1
@@ -289,6 +301,13 @@ def main():
         action="store_true",
         help="si se pasa, recalcula json aunque ya exista",
     )
+    parser.add_argument(
+        "--model-dir",
+        type=str,
+        default="qantev/trocr-base-spanish",
+        help="ruta al modelo (baseline o fine-tuned)",
+    )
+
     args = parser.parse_args()
 
     runOcr(
@@ -298,6 +317,7 @@ def main():
         dpi=args.dpi,
         use_cache=not args.no_cache,
         overwrite=args.overwrite,
+        model_dir=args.model_dir,
     )
 
 
