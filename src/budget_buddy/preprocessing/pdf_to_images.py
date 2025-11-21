@@ -1,7 +1,4 @@
 from pathlib import Path
-from typing import List
-import os
-
 from pdf2image import convert_from_path
 from PIL import Image
 
@@ -14,23 +11,18 @@ INTERIM_ROOT = ROOT / "data" / "interim"
 IMAGES_ROOT = INTERIM_ROOT / "images"
 
 
-def pdfToImages(pdf_path: Path, dpi: int = 450) -> List[Image.Image]:
-    images = convert_from_path(
-        str(pdf_path),
-        dpi=dpi,
-        fmt="png",
-        grayscale=True,
-    )
-    return images
+def pdfToImages(pdf_path: Path, dpi: int = 450) -> list[Image.Image]:
+    # convierte pdf a páginas en memoria
+    return convert_from_path(str(pdf_path), dpi=dpi, fmt="png", grayscale=True)
+
 
 def getImagesDir(split: str, category: str) -> Path:
-    # directorio donde se guardan las imágenes de un split y categoría
+    # ruta base donde se guardarán las imágenes
     return IMAGES_ROOT / split / category
 
 
 def buildImageFilename(pdf_path: Path, page_idx: int) -> str:
-    # nombre de archivo consistente para cada página
-    # ej: ABC123_p1.png
+    # nombre consistente por página
     return f"{pdf_path.stem}_p{page_idx + 1}.png"
 
 
@@ -40,13 +32,13 @@ def savePdfPagesAsImages(
     pdf_path: Path,
     dpi: int = 450,
     overwrite: bool = False,
-) -> List[Path]:
-    # rasteriza un pdf y guarda cada página como png
+) -> list[Path]:
+    # guarda cada página rasterizada en disco
     out_dir = getImagesDir(split, category)
     ensureDirs([out_dir])
 
     images = pdfToImages(pdf_path, dpi=dpi)
-    saved_paths: List[Path] = []
+    saved_paths: list[Path] = []
 
     if not images:
         return saved_paths
@@ -56,11 +48,12 @@ def savePdfPagesAsImages(
         out_path = out_dir / fname
 
         if out_path.exists() and not overwrite:
+            # ya existe y no se debe sobrescribir
             saved_paths.append(out_path)
             continue
 
         if img.mode != "RGB":
-            # imagen viene en 'L' por grayscale=True; la pasamos a RGB para TrOCR
+            # trocr requiere rgb
             img = img.convert("RGB")
 
         img.save(out_path, format="PNG", dpi=(dpi, dpi))
@@ -73,19 +66,18 @@ def loadCachedImages(
     split: str,
     category: str,
     pdf_path: Path,
-) -> List[Image.Image]:
-    # carga imágenes ya guardadas en disco; si no hay ninguna, devuelve lista vacía
+) -> list[Image.Image]:
+    # carga imágenes previamente guardadas
     out_dir = getImagesDir(split, category)
     if not out_dir.exists():
         return []
 
     pattern = f"{pdf_path.stem}_p*.png"
     img_paths = sorted(out_dir.glob(pattern))
-    images: List[Image.Image] = []
 
+    images: list[Image.Image] = []
     for path in img_paths:
-        img = Image.open(path)
-        images.append(img)
+        images.append(Image.open(path))
 
     return images
 
@@ -96,7 +88,7 @@ def buildImagesForSplit(
     max_per_category: int | None = None,
     overwrite: bool = False,
 ) -> None:
-    # genera imágenes para todos los pdfs de un split
+    # procesa todos los pdfs del split
     split_root = getSplitRoot(split)
     print(f"generando imágenes para split={split} desde {split_root}")
 
