@@ -6,7 +6,6 @@ import pandas as pd
 from src.budget_buddy.preprocessing.cleaning import scanPdfs, markDuplicatesByName, addHashes
 from src.budget_buddy.utils.io import toCsv
 
-# rutas base del proyecto
 ROOT = Path(".")
 INTERIM_UNZIPPED = ROOT / "data" / "interim" / "unzipped_pdfs"
 PROC_DIR = ROOT / "data" / "processed"
