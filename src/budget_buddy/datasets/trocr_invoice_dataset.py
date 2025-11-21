@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import Any
 import xml.etree.ElementTree as ET
-
-from PIL import Image
-import torch
+from PIL import Image, ImageOps, ImageFilter
 from torch.utils.data import Dataset
+
+from src.budget_buddy.layout.sat_template import getSatRegionsBoxes
 
 
 ROOT = Path(".").resolve()
@@ -13,7 +13,7 @@ IMAGES_TRAIN_ROOT = ROOT / "data" / "interim" / "images" / "train"
 
 
 def findImageForPdf(category: str, stem: str) -> Path | None:
-    # busca imagen rasterizada asociada al pdf
+    # buscar imagen principal del pdf
     img_dir = IMAGES_TRAIN_ROOT / category
     if not img_dir.exists():
         return None
@@ -22,15 +22,14 @@ def findImageForPdf(category: str, stem: str) -> Path | None:
     if candidate.exists():
         return candidate
 
+    # usar primera coincidencia si hay varias páginas
     matches = sorted(img_dir.glob(f"{stem}_p*.png"))
     return matches[0] if matches else None
 
 
 def parseFelXml(xml_path: Path) -> dict:
-    # extrae campos clave del xml fel
-    ns = {
-        "dte": "http://www.sat.gob.gt/dte/fel/0.2.0",
-    }
+    # cargar xml fel y extraer campos mínimos
+    ns = {"dte": "http://www.sat.gob.gt/dte/fel/0.2.0"}
 
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -45,12 +44,11 @@ def parseFelXml(xml_path: Path) -> dict:
     fecha_emision_raw = (
         datos_generales.get("FechaHoraEmision") if datos_generales is not None else ""
     )
-    fecha_emision = ""
-    if fecha_emision_raw:
-        fecha_emision = fecha_emision_raw.split("T")[0]
+
+    # normalizar fecha a yyyy-mm-dd
+    fecha_emision = fecha_emision_raw.split("T")[0] if fecha_emision_raw else ""
 
     moneda = datos_generales.get("CodigoMoneda") if datos_generales is not None else ""
-
     total_str = gran_total.text.strip() if gran_total is not None and gran_total.text else ""
 
     return {
@@ -62,7 +60,7 @@ def parseFelXml(xml_path: Path) -> dict:
 
 
 def buildTargetText(fields: dict) -> str:
-    # construye string objetivo estable para el modelo
+    # armar texto objetivo simple para entrenamiento
     emisor = fields.get("emisor_nombre", "") or ""
     fecha = fields.get("fecha_emision", "") or ""
     total = fields.get("gran_total", "") or ""
@@ -78,7 +76,7 @@ def buildTargetText(fields: dict) -> str:
 
 
 def collectInvoicePairs() -> list[dict]:
-    # recorre data/splits/train y arma lista de pares (imagen, xml → texto)
+    # recorrer estructura de train y emparejar pdf-xml-imagen
     pairs: list[dict] = []
 
     if not TRAIN_SPLIT_ROOT.exists():
@@ -106,6 +104,7 @@ def collectInvoicePairs() -> list[dict]:
             if not target_text:
                 continue
 
+            # registrar par válido
             pairs.append(
                 {
                     "category": category,
@@ -123,11 +122,20 @@ def collectInvoicePairs() -> list[dict]:
 
 
 class TrOcrInvoiceDataset(Dataset):
-    # dataset pytorch para finetuning trocr con facturas fel
-    def __init__(self, processor, pairs: list[dict], max_target_length: int = 128):
+    # dataset para trocr con recortes sat y augment opcional
+    def __init__(
+        self,
+        processor,
+        pairs: list[dict],
+        max_target_length: int = 128,
+        image_mode: str = "full",
+        use_augment: bool = False,
+    ):
         self.processor = processor
         self.pairs = pairs
         self.max_target_length = max_target_length
+        self.image_mode = image_mode
+        self.use_augment = use_augment
 
     def __len__(self) -> int:
         return len(self.pairs)
@@ -137,11 +145,29 @@ class TrOcrInvoiceDataset(Dataset):
         img = Image.open(row["image_path"]).convert("RGB")
         text = row["target_text"]
 
-        pixel_values = self.processor(
-            images=img,
-            return_tensors="pt",
-        ).pixel_values[0]
+        # recortar encabezado sat si se pidió
+        if self.image_mode == "sat-header":
+            w, h = img.size
+            boxes = getSatRegionsBoxes(w, h)
+            if "header" in boxes:
+                img = img.crop(boxes["header"])
 
+        # augment ligero tipo escáner
+        if self.use_augment:
+            img = ImageOps.autocontrast(img)  # contraste más homogéneo
+            w, h = img.size
+
+            # pequeño reescalado
+            new_w = max(1, int(w * 0.75))
+            new_h = max(1, int(h * 0.75))
+            img = img.resize((new_w, new_h), Image.BICUBIC)
+
+            # blur suave
+            img = img.filter(ImageFilter.GaussianBlur(radius=0.5))
+
+        pixel_values = self.processor(images=img, return_tensors="pt").pixel_values[0]
+
+        # codificar texto objetivo
         with self.processor.as_target_processor():
             labels = self.processor(
                 text,
