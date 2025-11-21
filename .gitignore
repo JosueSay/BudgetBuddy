@@ -215,3 +215,8 @@ notebooks/outputs/
 # dependencias
 venv_common/
 venv_models/
+
+
+# outputs (temporal)
+outputs/
+models/
