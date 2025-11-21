@@ -1,11 +1,9 @@
 import argparse
 import random
 from pathlib import Path
-
 import pandas as pd
 
 from src.budget_buddy.utils.io import ensureDirs, toCsv
-
 
 ROOT = Path(".")
 SPLITS_DIR = ROOT / "data" / "splits"
@@ -13,6 +11,7 @@ PROC_DIR = ROOT / "data" / "processed"
 
 
 def findSplitRoot(split_name: str) -> Path:
+    # validar que el split exista antes de seguir
     split_root = SPLITS_DIR / split_name
     if not split_root.exists():
         raise FileNotFoundError(f"no existe {split_root}, corre build-train primero")
@@ -20,6 +19,7 @@ def findSplitRoot(split_name: str) -> Path:
 
 
 def samplePdfsFromSplit(split_root: Path, per_category: int, seed: int | None = None):
+    # seed opcional para que la muestra sea reproducible
     if seed is not None:
         random.seed(seed)
 
@@ -35,6 +35,7 @@ def samplePdfsFromSplit(split_root: Path, per_category: int, seed: int | None = 
         if not pdf_paths:
             continue
 
+        # limitar PDFs por categoría si se pidió
         if per_category > 0 and len(pdf_paths) > per_category:
             sampled = random.sample(pdf_paths, per_category)
         else:
@@ -46,7 +47,7 @@ def samplePdfsFromSplit(split_root: Path, per_category: int, seed: int | None = 
                     "pdf_path": str(pdf_path),
                     "category": category,
                     "pdf_filename": pdf_path.name,
-                    # campos de verdad terreno a rellenar a mano
+                    # estos campos se llenan manualmente luego
                     "emisor": "",
                     "fecha_emision": "",
                     "total": "",
@@ -60,10 +61,10 @@ def samplePdfsFromSplit(split_root: Path, per_category: int, seed: int | None = 
 def buildGroundTruthCsv(split_name: str, per_category: int, seed: int, output_path: Path, overwrite: bool):
     ensureDirs([PROC_DIR])
 
+    # si el archivo existe y no se pide overwrite, no seguir
     if output_path.exists() and not overwrite:
         raise FileExistsError(
-            f"{output_path} ya existe. "
-            f"usa --overwrite si quieres regenerarlo."
+            f"{output_path} ya existe. usa --overwrite si quieres regenerarlo."
         )
 
     split_root = findSplitRoot(split_name)
@@ -116,6 +117,7 @@ def main():
 
     output_path = ROOT / args.output
 
+    # orquestar todo el pipeline
     buildGroundTruthCsv(
         split_name=args.split,
         per_category=args.per_category,

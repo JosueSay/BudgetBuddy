@@ -3,7 +3,6 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-
 import pandas as pd
 
 from src.budget_buddy.utils.io import ensureDirs, toCsv
@@ -61,13 +60,14 @@ def loadCategoriesAssignments():
 
 
 def createCategoryFolders(categories):
+    # crea carpetas base para cada categoría en train
     paths = [TRAIN_ROOT] + [TRAIN_ROOT / cat for cat in categories]
     ensureDirs(paths)
     return {cat: TRAIN_ROOT / cat for cat in categories}
 
 
 def moveFile(src_path, dst_dir):
-    # mueve archivo a la carpeta de categoria evitando colisiones
+    # mueve archivo a la carpeta de destino evitando colisiones de nombre
     dst_dir.mkdir(parents=True, exist_ok=True)
     dst_path = dst_dir / src_path.name
 
@@ -81,7 +81,7 @@ def moveFile(src_path, dst_dir):
 
 
 def backupTrainArtifacts(run_dir: Path):
-    # guarda backup de los csv de train para poder deshacer
+    # guarda backup de los csv de train para poder deshacer luego
     run_dir.mkdir(parents=True, exist_ok=True)
     if TRAIN_MANIFEST_PATH.exists():
         shutil.copy2(TRAIN_MANIFEST_PATH, run_dir / RUN_MANIFEST_BAK)
@@ -92,7 +92,7 @@ def backupTrainArtifacts(run_dir: Path):
 
 
 def restoreTrainArtifactsFromBackup(run_dir: Path):
-    # restaura los csv de train desde los backups de la corrida
+    # restaura csv de train desde los backups de la corrida
     bak_manifest = run_dir / RUN_MANIFEST_BAK
     bak_counts = run_dir / RUN_COUNTS_BAK
     bak_skipped = run_dir / RUN_SKIPPED_BAK
@@ -106,17 +106,14 @@ def restoreTrainArtifactsFromBackup(run_dir: Path):
 
 
 def buildXmlIndex():
-    """
-    Indexa los XML en data/interim/unzipped_xml por nombre base (stem).
-    Ej.: ABC123.pdf ↔ ABC123.xml
-    """
+    # indexa xml en data/interim/unzipped_xml por nombre base (stem)
     index = {}
     if not XML_UNZIPPED_DIR.exists():
         return index
 
     for xml_path in XML_UNZIPPED_DIR.rglob("*.xml"):
         stem = xml_path.stem
-        # si hay duplicados, nos quedamos con el primero (se puede refinar luego)
+        # si hay duplicados se queda con el primero
         if stem not in index:
             index[stem] = xml_path
     return index
@@ -135,14 +132,14 @@ def buildTrainSplit():
     manifest_rows = []
     skipped_rows = []
 
-    # 1) filtrar PDFs que sí existen según categories.csv (missing == 0)
+    # filtrar filas con PDFs existentes (missing == 0)
     df_filtered = df.copy()
     df_filtered = df_filtered[df_filtered["missing"] == 0]
 
-    # 2) preparar XML: unzip y build index
+    # preparar xml: unzip y construir índice
     if XML_RAW_DIR.exists():
         ensureDirs([XML_UNZIPPED_DIR])
-        # descomprime todos los zips de xml a /data/interim/unzipped_xml
+        # descomprime zips de xml a /data/interim/unzipped_xml
         unzipAll(XML_RAW_DIR, XML_UNZIPPED_DIR)
 
     xml_index = buildXmlIndex()
@@ -173,7 +170,7 @@ def buildTrainSplit():
             )
             continue
 
-        # base pdf: solo pasa a train si existe XML con el mismo stem
+        # requiere xml con el mismo stem que el pdf
         stem = src_path.stem
         xml_path = xml_index.get(stem)
 
@@ -189,12 +186,11 @@ def buildTrainSplit():
 
         dst_dir = category_dirs[category]
 
-        # mover PDF
         dst_pdf_path = moveFile(src_path, dst_dir)
 
-        # mover XML asociado
+        # mover xml asociado (si sigue existiendo)
         if not xml_path.exists():
-            # por si el xml fue borrado entre el índice y ahora
+            # por si el xml se borró entre el índice y el movimiento
             skipped_rows.append(
                 {
                     "reason": "xml_desaparecido",
@@ -239,7 +235,7 @@ def buildTrainSplit():
         skipped_df = pd.DataFrame(skipped_rows)
         toCsv(skipped_df, TRAIN_SKIPPED_PATH, overwrite=True)
 
-    # guarda log de la corrida en el run_dir para poder hacer undo
+    # guarda log de la corrida para poder hacer undo
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / RUN_LOG_NAME
     manifest_df.to_csv(log_path, index=False)
@@ -272,11 +268,11 @@ def undoRun(run_dir: Path):
         new_path_str = row.get("new_pdf_path", "")
         orig_path_str = row.get("original_pdf_path", "")
 
-        # también caminos para xml (pueden no existir en corridas viejas)
+        # rutas para xml
         new_xml_path_str = row.get("new_xml_path", "")
         orig_xml_path_str = row.get("original_xml_path", "")
 
-        # restaurar PDF
+        # restaurar pdf
         if new_path_str and orig_path_str:
             src = Path(new_path_str)
             dst = Path(orig_path_str)
@@ -285,6 +281,7 @@ def undoRun(run_dir: Path):
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 final_dst = dst
 
+                # evita sobreescribir si ya existe el archivo original
                 i = 1
                 while final_dst.exists():
                     final_dst = dst.with_name(f"{dst.stem}__restored{i}{dst.suffix}")
@@ -297,7 +294,7 @@ def undoRun(run_dir: Path):
                 print(f"- no encontrado en split (PDF, saltando): {src}")
                 skipped += 1
 
-        # restaurar XML (si hay info en el log)
+        # restaurar xml (si hay info en el log)
         if new_xml_path_str and orig_xml_path_str:
             src_xml = Path(new_xml_path_str)
             dst_xml = Path(orig_xml_path_str)
@@ -308,7 +305,9 @@ def undoRun(run_dir: Path):
 
                 i = 1
                 while final_dst_xml.exists():
-                    final_dst_xml = dst_xml.with_name(f"{dst_xml.stem}__restored{i}{dst_xml.suffix}")
+                    final_dst_xml = dst_xml.with_name(
+                        f"{dst_xml.stem}__restored{i}{dst_xml.suffix}"
+                    )
                     i += 1
 
                 shutil.move(str(src_xml), str(final_dst_xml))
@@ -326,7 +325,7 @@ def undoRun(run_dir: Path):
         f"- {TRAIN_SKIPPED_PATH}"
     )
 
-    # intento de limpiar carpetas de categorias vacías
+    # intenta limpiar carpetas de categorías vacías en train
     if TRAIN_ROOT.exists():
         for cat_dir in TRAIN_ROOT.iterdir():
             if cat_dir.is_dir():

@@ -6,25 +6,26 @@ from src.budget_buddy.utils.io import ensureDirs
 
 def main():
     parser = argparse.ArgumentParser()
+    # activar hash sha256 para detectar duplicados por contenido
     parser.add_argument("--hash", action="store_true", help="calcular sha256 para duplicados por contenido")
+    # permitir sobrescribir csv existentes
     parser.add_argument("--overwrite", action="store_true", help="reemplazar csv si existe")
     args = parser.parse_args()
 
     root = Path(".")
     raw_dir = root / "data" / "raw" / "pdf"
-
     interim_unzip_dir = root / "data" / "interim" / "unzipped_pdfs"
-
     processed_dir = root / "data" / "processed"
+
     manifest_csv = processed_dir / "manifest_pdfs.csv"
     dup_csv = processed_dir / "manifest_duplicates.csv"
 
     ensureDirs([interim_unzip_dir, processed_dir])
 
-    # 1) descomprimir todos los zips a /data/interim/unzipped_pdfs/{zip_name}/
+    # descomprimir todos los zips
     unzipAll(raw_dir, interim_unzip_dir)
 
-    # 2) construir manifest y duplicados
+    # generar manifest y archivo de duplicados
     buildManifest(
         interim_unzip_dir=interim_unzip_dir,
         manifest_csv=manifest_csv,
