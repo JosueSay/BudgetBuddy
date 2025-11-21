@@ -1,120 +1,243 @@
-# preprocesamiento de PDFs
+###########################################################################
+#                          Budget Buddy — Makefile                        
+#                         Procesamiento / OCR / NLP                      
+###########################################################################
+
+# Variables generales ------------------------------------------------------
+
+PYTHON := PYTHONPATH=. python
+DEBUG_RUN := $(shell date +"%Y%m%d_%H%M%S")
+MODEL_NAME ?= default_model
+DEBUG_DIR := outputs/debug/$(MODEL_NAME)_$(DEBUG_RUN)
+
+###########################################################################
+#                              PREPROCESAMIENTO                          
+###########################################################################
+
 .PHONY: preprocess
-preprocess:
-	 PYTHONPATH=. python scripts/python/preprocess.py --hash --overwrite
+preprocess:  ## Preprocesa PDFs y genera hashes
+	$(PYTHON) scripts/python/preprocess.py --hash --overwrite
 
 
-# resolución de duplicados
+###########################################################################
+#                          RESOLUCIÓN DE DUPLICADOS                       
+###########################################################################
+
 .PHONY: resolve resolve-apply duplicate-undo
-resolve:
-	 PYTHONPATH=. python scripts/python/resolve_duplicates.py --by name
+resolve:  ## Detecta duplicados por nombre
+	$(PYTHON) scripts/python/resolve_duplicates.py --by name
 
-resolve-apply:
-	 PYTHONPATH=. python scripts/python/resolve_duplicates.py --by name --apply
+resolve-apply:  ## Aplica la resolución de duplicados
+	$(PYTHON) scripts/python/resolve_duplicates.py --by name --apply
 
-duplicate-undo:
-	 @echo "uso: make duplicate-undo RUN=run_YYYYmmdd_HHMMSS"
-	 PYTHONPATH=. python scripts/python/resolve_duplicates.py --undo "data/interim/.trash/$(RUN)"
+duplicate-undo: ## Revierte una ejecución previa
+	@echo "uso: make duplicate-undo RUN=run_YYYYmmdd_HHMMSS"
+	$(PYTHON) scripts/python/resolve_duplicates.py --undo "data/interim/.trash/$(RUN)"
 
 
-# web para categorizar facturas
+###########################################################################
+#                                  WEB APP                                
+###########################################################################
+
 .PHONY: web
-web:
-	 PYTHONPATH=. uvicorn src.budget_buddy.webapp.main:app --host 0.0.0.0 --port 8000 --reload
+web:  ## Inicia el servidor de categorización
+	PYTHONPATH=. uvicorn src.budget_buddy.webapp.main:app --host 0.0.0.0 --port 8000 --reload
 
 
-# separación de categorias
+###########################################################################
+#                           SEPARACIÓN DE CATEGORÍAS                      
+###########################################################################
+
 .PHONY: build-train build-train-undo
-build-train:
-	 PYTHONPATH=. python scripts/python/build_train_split.py
+build-train: ## Construye los splits de entrenamiento
+	$(PYTHON) scripts/python/build_train_split.py
 
-build-train-undo:
-	 @echo "uso: make build-train-undo RUN=run_YYYYmmdd_HHMMSS"
-	 PYTHONPATH=. python scripts/python/build_train_split.py --undo "data/splits/.trash/$(RUN)"
+build-train-undo: ## Revierte split anterior
+	@echo "uso: make build-train-undo RUN=run_YYYYmmdd_HHMMSS"
+	$(PYTHON) scripts/python/build_train_split.py --undo "data/splits/.trash/$(RUN)"
 
 
-# rasterizacion imagenes
-.PHONY: build-images
-build-images:
+###########################################################################
+#                           RASTERIZACIÓN DE IMÁGENES                     
+###########################################################################
+
+.PHONY: build-images build-images-fast
+build-images:  ## Genera PNGs (cache respetado)
 	@echo "📄 Generando imágenes (cache activado). Para sobrescribir: make build-images OVERWRITE=1"
-	PYTHONPATH=. python scripts/python/build_ocr_images.py --split train --dpi 450 $(if $(OVERWRITE),--overwrite,)
+	$(PYTHON) scripts/python/build_ocr_images.py --split train --dpi 450 $(if $(OVERWRITE),--overwrite,)
 
-.PHONY: build-images-fast
-build-images-fast:
-	PYTHONPATH=. python scripts/python/build_ocr_images.py --split train --dpi 450 --max-per-category 2 $(if $(OVERWRITE),--overwrite,)
+build-images-fast: ## Genera pocas imágenes por categoría
+	$(PYTHON) scripts/python/build_ocr_images.py --split train --dpi 450 --max-per-category 2 $(if $(OVERWRITE),--overwrite,)
 
 
-# OCR con plantilla sat
-.PHONY: ocr
+###########################################################################
+#                               OCR — MODELO BASE                         
+###########################################################################
+
+.PHONY: ocr ocr-fast ocr-overwrite ocr-no-cache ocr-full
 ocr:
-	@echo "🔎 OCR usando cache y GPU (modo plantilla SAT por defecto)"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda
+	@echo "🔎 OCR usando modelo base"
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda
 
-.PHONY: ocr-fast
 ocr-fast:
-	@echo "⚡ OCR rápido (3 PDFs por categoría)"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --max-per-category 3 --device cuda
+	@echo "⚡ OCR rápido (modelo base)"
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --max-per-category 3 --device cuda
 
-.PHONY: ocr-overwrite
 ocr-overwrite:
-	@echo "♻️ Recalculando JSON OCR (manteniendo cache de imágenes)"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda --overwrite
+	@echo "♻️ Recalculando JSON OCR"
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --overwrite
 
-.PHONY: ocr-no-cache
 ocr-no-cache:
-	@echo "🚫 Ignorando cache de imágenes — regenerando PNGs al vuelo"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda --no-cache --overwrite
+	@echo "🚫 Ignorando cache de imágenes"
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --no-cache --overwrite
 
-.PHONY: ocr-full
 ocr-full:
-	@echo "📄 OCR página completa — útil para debugging"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda --mode full
+	@echo "📄 OCR página completa"
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --mode full
 
 
-# fine-tuning TrOCR con facturas FEL
-.PHONY: ocr-train-fel
-ocr-train-fel:
-	@echo "🧠 Finetuning TrOCR con facturas FEL (PDF + XML)…"
-	PYTHONPATH=. python scripts/python/train_trocr_fel.py --device cuda --output-dir models/trocr_fel_v1
+###########################################################################
+#                   FINETUNING TrOCR — Variantes FEL                      
+###########################################################################
 
-.PHONY: ocr-train-fel-cpu
-ocr-train-fel-cpu:
-	@echo "🧠 Finetuning TrOCR con facturas FEL en CPU (modo lento)…"
-	PYTHONPATH=. python scripts/python/train_trocr_fel.py --device cpu --output-dir models/trocr_fel_v1
+# --- FULL PAGE ---
+.PHONY: ocr-train-fel-full
+ocr-train-fel-full: ## Full page sin augment
+	@echo "🧠 Finetuning TrOCR FEL FULL PAGE"
+	$(PYTHON) scripts/python/train_trocr_fel.py \
+		--device cuda \
+		--output-dir models/trocr_fel_full_v1 \
+		--epochs 4 --train-batch-size 4 --eval-batch-size 4 \
+		--lr 1e-5 --warmup-ratio 0.05 \
+		--image-mode full
 
-.PHONY: ocr-train-fel-fast
-ocr-train-fel-fast:
-	@echo "⚡ Finetuning rápido TrOCR FEL (pocas épocas)…"
-	PYTHONPATH=. python scripts/python/train_trocr_fel.py --device cuda --output-dir models/trocr_fel_v1_fast --epochs 2 --train-batch-size 2 --eval-batch-size 2
+# --- HEADER ---
+.PHONY: ocr-train-fel-header
+ocr-train-fel-header: ## Sat-header sin augment
+	@echo "🧠 Finetuning TrOCR FEL HEADER"
+	$(PYTHON) scripts/python/train_trocr_fel.py \
+		--device cuda \
+		--output-dir models/trocr_fel_header_v1 \
+		--epochs 4 --train-batch-size 4 --eval-batch-size 4 \
+		--lr 1e-5 --warmup-ratio 0.05 \
+		--image-mode sat-header
+
+# --- HEADER + AUGMENT ---
+.PHONY: ocr-train-fel-header-aug
+ocr-train-fel-header-aug: ## Sat-header con augment
+	@echo "🧠 Finetuning TrOCR FEL HEADER + AUGMENT"
+	$(PYTHON) scripts/python/train_trocr_fel.py \
+		--device cuda \
+		--output-dir models/trocr_fel_header_aug_v1 \
+		--epochs 4 --train-batch-size 4 --eval-batch-size 4 \
+		--lr 1e-5 --warmup-ratio 0.05 \
+		--image-mode sat-header \
+		--use-augment
 
 
-# OCR usando modelo fine-tuned FEL
-.PHONY: ocr-fel
+###########################################################################
+#           COMANDO ÚNICO PARA EJECUTAR TODOS LOS TUNINGS          
+###########################################################################
+
+.PHONY: ocr-train-all
+ocr-train-all: ## Ejecuta full + header + header-aug
+	@echo "🚀 Ejecutando TODOS los fine-tuning FEL..."
+	$(MAKE) ocr-train-fel-full
+	$(MAKE) ocr-train-fel-header
+	$(MAKE) ocr-train-fel-header-aug
+	@echo "🎉 Fine-tuning FEL completado!"
+
+
+###########################################################################
+#                 OCR USANDO MODELOS FINETUNED (FEL)                      
+###########################################################################
+
+.PHONY: ocr-fel ocr-fel-fast ocr-fel-full ocr-fel-full-overwrite ocr-fel-debug
+
 ocr-fel:
-	@echo "🧾 OCR usando modelo fine-tuned (models/trocr_fel_v1)"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda --model-dir models/trocr_fel_v1 $(if $(OVERWRITE),--overwrite,)
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --model-dir models/trocr_fel_header_v1 $(if $(OVERWRITE),--overwrite,)
 
-# OCR comparativo rápido (base vs fine-tuned)
-.PHONY: ocr-fel-fast
 ocr-fel-fast:
-	@echo "⚡ OCR rápido con modelo fine-tuned (3 PDFs por categoría)"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --max-per-category 3 --device cuda --model-dir models/trocr_fel_v1
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --max-per-category 3 --device cuda --model-dir models/trocr_fel_header_v1
 
-# OCR completo (full-page) para debugging pero usando el modelo fine-tuned
-.PHONY: ocr-fel-full
 ocr-fel-full:
-	@echo "📄 OCR FULL PAGE usando modelo fine-tuned"
-	PYTHONPATH=. python src/budget_buddy/ocr/trocr_infer.py --device cuda --mode full --model-dir models/trocr_fel_v1
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --mode full --model-dir models/trocr_fel_full_v1
+
+ocr-fel-full-overwrite:
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --mode full --model-dir models/trocr_fel_full_v1 --overwrite
+
+.PHONY: ocr-fel-aug
+ocr-fel-aug:
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py --device cuda --model-dir models/trocr_fel_header_aug_v1 $(if $(OVERWRITE),--overwrite,)
 
 
-# muestras para ocr
+# --- DEBUG CON CARPETAS SEPARADAS ---
+ocr-fel-debug: ## Debug con crops + textos por región
+	@echo "🧪 Debug OCR → $(DEBUG_DIR)"
+	mkdir -p $(DEBUG_DIR)
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py \
+		--device cuda \
+		--mode sat-template \
+		--model-dir models/$(MODEL_NAME) \
+		--debug-crops-dir $(DEBUG_DIR) \
+		--overwrite
+
+.PHONY: ocr-all
+ocr-all:  ## Genera JSONs con modelo base + todos los fine-tuned
+	@echo "🧾 OCR → modelo BASE"
+	$(MAKE) ocr-overwrite
+
+	@echo "🧾 OCR → modelo FEL FULL PAGE"
+	$(MAKE) ocr-fel-full-overwrite
+
+	@echo "🧾 OCR → modelo FEL HEADER"
+	$(MAKE) ocr-fel OVERWRITE=1
+
+	@echo "🧾 OCR → modelo FEL HEADER + AUGMENT"
+	$(MAKE) ocr-fel-aug OVERWRITE=1
+
+	@echo "🎉 OCR completado para base + full + header + header-aug"
+
+
+###########################################################################
+#               DEBUG OCR – TODOS LOS MODELOS AUTOMÁTICAMENTE             
+###########################################################################
+.PHONY: ocr-base-debug
+ocr-base-debug:
+	@echo "🧪 Debug OCR BASE"
+	$(PYTHON) src/budget_buddy/ocr/trocr_infer.py \
+		--device cuda \
+		--mode sat-template \
+		--model-dir qantev/trocr-base-spanish \
+		--debug-crops-dir outputs/debug/base_$(DEBUG_RUN) \
+		--overwrite
+
+.PHONY: ocr-debug-all
+ocr-debug-all:  ## Ejecuta debug para modelo base + todos los fine-tuned
+	@echo "🧪 Debug OCR → modelos: base, full, header, header-aug"
+
+	$(MAKE) ocr-base-debug
+	$(MAKE) ocr-fel-debug MODEL_NAME=trocr_fel_full_v1
+	$(MAKE) ocr-fel-debug MODEL_NAME=trocr_fel_header_v1
+	$(MAKE) ocr-fel-debug MODEL_NAME=trocr_fel_header_aug_v1
+
+	@echo "🎉 Debug OCR completado para todos los modelos."
+
+
+###########################################################################
+#                          UTILIDADES OCR                                
+###########################################################################
+
 .PHONY: ocr-gt-sample
 ocr-gt-sample:
-	@echo "🎯 Generando muestras para ground truth OCR (rellenar campos en el CSV)…"
-	PYTHONPATH=. python scripts/python/build_ocr_ground_truth.py --split train --per-category 3 --overwrite
+	$(PYTHON) scripts/python/build_ocr_ground_truth.py --split train --per-category 3 --overwrite
 
 
-# test gpu
+###########################################################################
+#                              TEST GPU                                    
+###########################################################################
+
 .PHONY: check-gpu
 check-gpu:
-	 PYTHONPATH=. python -c "import torch; print('cuda:', torch.cuda.is_available(), '->', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
+	$(PYTHON) -c "import torch; print('cuda:', torch.cuda.is_available(), '->', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
+
