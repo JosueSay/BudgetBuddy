@@ -1,3 +1,4 @@
+from pathlib import Path
 import torch
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
@@ -16,12 +17,18 @@ def getDevice(devicePreference: str = "auto") -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def loadTrocrModel(modelDir: str, device: torch.device):
-    # carga modelo y processor de trocr
+def loadTrocrModel(modelDir: str, device):
+    p = Path(modelDir)
+
+    # si es carpeta local sin preprocessor_config, entrar al último subdir (timestamp)
+    if p.is_dir() and not (p / "preprocessor_config.json").exists():
+        subdirs = [d for d in p.iterdir() if d.is_dir()]
+        if subdirs:
+            p = sorted(subdirs)[-1]
+        modelDir = str(p)
+
     processor = TrOCRProcessor.from_pretrained(modelDir)
-    model = VisionEncoderDecoderModel.from_pretrained(modelDir)
-    model.to(device)
-    model.eval()
+    model = VisionEncoderDecoderModel.from_pretrained(modelDir).to(device)
     return processor, model
 
 
